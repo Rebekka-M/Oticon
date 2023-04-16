@@ -1,3 +1,8 @@
 # Oticon
+Install packages with:
+`conda env create --file environment.yml`
 
-Make a data-folder and place the .npy files in this folder set up data for challenge. Given data is too large to load over github.
+Activate environment with:
+`conda activate oticon`
+
+Place .npy files in the `data`.
