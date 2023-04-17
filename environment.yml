@@ -2,11 +2,11 @@ name: oticon
 channels:
   - defaults
   - conda-forge
+
 dependencies:
-  - pip=22.3.1
-  - python=3.11
+  - python=3.10
+  - pip
   - pip:
-    - --extra-index-url https://download.pytorch.org/whl/cu118
     - torch
     - torchvision
     - torchaudio
