@@ -24,6 +24,7 @@ if t.cuda.is_available() and not force_cpu:
 else:
     device = t.device("cpu")
 
+print(device)
 
 X_map = lambda X: t.from_numpy(X).to(dtype=t.float)[:, None, :, :]
 y_map = lambda y: t.from_numpy(y).to(dtype=t.uint8)
@@ -72,18 +73,21 @@ class Model(nn.Module):
 
         # inception
         self.inceptionA = InceptionA(in_channels=16)
+        print(sum(p.numel() for p in self.inceptionA.parameters() if p.requires_grad))
         self.inceptionB1 = InceptionB(in_channels=112)
+        print(sum(p.numel() for p in self.inceptionB1.parameters() if p.requires_grad))
         self.inceptionB2 = InceptionB(in_channels=240)
+        print(sum(p.numel() for p in self.inceptionB2.parameters() if p.requires_grad))
 
         # after inception
         self.conv3 = nn.Conv2d(in_channels = 368, out_channels= 32,  kernel_size=1)
-        self.average_pool = nn.AvgPool2d(kernel_size=2, stride=2)
+        self.average_pool1 = nn.AvgPool2d(kernel_size=2, stride=2)
         
-        self.global_average_pool = nn.AdaptiveAvgPool2d(output_size=32) 
+        # self.global_average_pool = nn.AdaptiveAvgPool2d(output_size=32)
+        self.average_pool2 = nn.Conv2d(in_channels=32, out_channels=32, kernel_size=1, stride=1)
 
         self.sigmoid_class = nn.Sigmoid()
-        self.fc_flatten = nn.Flatten()
-        self.fc_final = nn.Linear(32768, n_classes)
+        self.fc_final = nn.Linear(32, n_classes)
 
     def forward(self, x):
 
@@ -97,11 +101,12 @@ class Model(nn.Module):
         z = self.inceptionB2(z)
 
         z = self.conv3(z)
-        z = self.average_pool(z)
+        z = self.average_pool1(z)
         
-        z = self.global_average_pool(z)
+        z = self.average_pool2(z)
+        z = z.mean(dim=(2, 3))
+        
         z = self.sigmoid_class(z)
-        z = self.fc_flatten(z)
         z = self.fc_final(z)
        
 

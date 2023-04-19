@@ -78,12 +78,15 @@ class InceptionB(nn.Module):
 
         self.branch3_conv1 = conv_block(in_channels, 32, kernel_size=1, stride=1)
         self.branch3_dw_conv = conv_block(32, 32, kernel_size=3, groups=32, padding="same", padding_mode="replicate")
+        self.branch3_pw_conv = conv_block(32, 32, kernel_size=1, padding="same", padding_mode="replicate")
         self.branch3_conv2 = conv_block(32, 32, kernel_size=3, padding="same", padding_mode="replicate")
 
         self.branch4_conv1 = conv_block(in_channels, 32, kernel_size=1)
         self.branch4_dw_conv1 = conv_block(32, 32, kernel_size=3, groups=32, padding="same", padding_mode="replicate")
+        self.branch4_pw_conv1 = conv_block(32, 32, kernel_size=1, padding="same", padding_mode="replicate")
         self.branch4_conv2 = conv_block(32, 32, kernel_size=1)
-        self.branch4_dw_conv2 = conv_block(32, 32, kernel_size=3,groups=32, padding="same", padding_mode="replicate")
+        self.branch4_dw_conv2 = conv_block(32, 32, kernel_size=3, groups=32, padding="same", padding_mode="replicate")
+        self.branch4_pw_conv2 = conv_block(32, 32, kernel_size=1, padding="same", padding_mode="replicate")
         self.branch4_conv3 = conv_block(32, 32, kernel_size=1)
 
     def _forward(self, x: Tensor) -> List[Tensor]:
@@ -95,12 +98,15 @@ class InceptionB(nn.Module):
 
         branch3 = self.branch3_conv1(x)
         branch3 = self.branch3_dw_conv(branch3)
+        branch3 = self.branch3_pw_conv(branch3)
         branch3 = self.branch3_conv2(branch3)
 
         branch4 = self.branch4_conv1(x)
         branch4 = self.branch4_dw_conv1(branch4)
+        branch4 = self.branch4_pw_conv1(branch4)
         branch4 = self.branch4_conv2(branch4)
         branch4 = self.branch4_dw_conv2(branch4)
+        branch4 = self.branch4_pw_conv2(branch4)
         branch4 = self.branch4_conv3(branch4)
         
         # Concatenate the outputs
