@@ -10,17 +10,32 @@ from tqdm import trange, tqdm
 import os
 import sys
 
-# Set up wandb
-# import api_key
-# import wandb
-
-# os["WANDB_API_KEY"] = api_key.key
-# wandb.init(entity="wandb", project="pytorch-intro")
-
 sys.path.insert(0, os.getcwd())
 
 from data.loader import load_training, load_validation, n_freq, n_time, n_classes
 from inception import InceptionA, InceptionB
+
+# Set up wandb
+import api_key
+import wandb
+
+# os.environ["WANDB_API_KEY"] = api_key.key
+WANDB__SERVICE_WAIT = 300
+
+config = {
+    "learning_rate": 2e-3,
+    "weight_decay": 1e-3,
+    "architecture": "inceptiion_model",
+    "n_epochs": 20,
+    "batch_size": 128,
+    "optimizer": "Adam",
+    "loss_fn": "CrossEntropyLoss",
+    "model_parameters": 0,
+}
+
+wandb.init(
+    project="OTICON", settings=wandb.Settings(start_method="thread"), config=config
+)
 
 # %%
 
@@ -138,6 +153,10 @@ learning_rate = 2e-3
 weight_decay = 1e-3
 n_epochs = 20
 
+wandb.config["n_epochs"] = n_epochs
+wandb.config["learning_rate"] = learning_rate
+wandb.config["weight_decay"] = weight_decay
+
 model = Model().to(device)
 
 # Print amount of parameters
@@ -176,7 +195,13 @@ for epoch in (bar := trange(n_epochs)):
         loss.backward()
         optimizer.step()
 
+        # log with wandb
+        wandb.log({"acc_train": acc_running, "loss_train": loss})
+
     scheduler.step(acc_running)
+
+    wandb.config["learning_rate"] = optimizer.param_groups[0]["lr"]
+    wandb.config["weight_decay"] = optimizer.param_groups[0]["weight_decay"]
     # scheduler.step()
 
 
@@ -186,6 +211,7 @@ print(acc_running)
 model.eval()
 
 acc_running = 0
+y_pred_s = []
 
 for i, (x, y) in (bar := tqdm(enumerate(loader_val, 1), leave=False)):
     x = x.to(device)
@@ -197,10 +223,16 @@ for i, (x, y) in (bar := tqdm(enumerate(loader_val, 1), leave=False)):
     # Mean of accuracy
     acc_running += 1 / i * (acc.item() - acc_running)
     bar.set_postfix(acc=f"{acc_running:.2f}")
+    y_pred_s.append(y_pred.argmax(dim=1).detach().cpu().numpy())
 
+# log with wandb
+wandb.log({"acc_val": acc_running})
 
 print(acc_running)
 
+# log data, labels, and predictions
+wandb.log({"spectrograms": [wandb.Image(im) for im in X_train]})
+wandb.log({"predictions": y_pred_s})
 
 if __name__ == "__main__":
     pass
