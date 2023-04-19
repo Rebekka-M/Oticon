@@ -133,3 +133,6 @@ dmypy.json
 
 # data-file
 data/**/*.npy
+
+# ignore api_key
+experiments/api_key.py
