@@ -16,25 +16,25 @@ from data.loader import load_training, load_validation, n_freq, n_time, n_classe
 from inception import InceptionA, InceptionB
 
 # Set up wandb
-import api_key
+# import api_key
 import wandb
 
 # os.environ["WANDB_API_KEY"] = api_key.key
 WANDB__SERVICE_WAIT = 300
 
 config = {
-    "learning_rate": 2e-3,
-    "weight_decay": 1e-3,
     "architecture": "inceptiion_model",
     "n_epochs": 20,
-    "batch_size": 128,
     "optimizer": "Adam",
     "loss_fn": "CrossEntropyLoss",
     "model_parameters": 0,
 }
 
 wandb.init(
-    project="OTICON", settings=wandb.Settings(start_method="thread"), config=config
+    project="OTICON",
+    entity="metrics_logger",
+    settings=wandb.Settings(start_method="thread"),
+    config=config,
 )
 
 # %%
@@ -153,15 +153,15 @@ learning_rate = 2e-3
 weight_decay = 1e-3
 n_epochs = 20
 
-wandb.config["n_epochs"] = n_epochs
-wandb.config["learning_rate"] = learning_rate
-wandb.config["weight_decay"] = weight_decay
 
 model = Model().to(device)
 
 # Print amount of parameters
 print(f"Parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
 
+wandb.config.update(
+    {"model_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad)}
+)
 
 model.train()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -199,9 +199,8 @@ for epoch in (bar := trange(n_epochs)):
         wandb.log({"acc_train": acc_running, "loss_train": loss})
 
     scheduler.step(acc_running)
+    wandb.log({"lr": optimizer.param_groups[0]["lr"]})
 
-    wandb.config["learning_rate"] = optimizer.param_groups[0]["lr"]
-    wandb.config["weight_decay"] = optimizer.param_groups[0]["weight_decay"]
     # scheduler.step()
 
 
