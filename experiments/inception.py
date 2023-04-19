@@ -33,35 +33,35 @@ class InceptionA(nn.Module):
         self.branch2_conv = conv_block(in_channels, 16, kernel_size=1)
 
         self.branch3_conv1 = conv_block(in_channels, 16, kernel_size=1)
-        # self.branch3_conv2 = conv_block(
-        #     16, 32, kernel_size=3, padding="same", padding_mode="replicate"
+        self.branch3_conv2 = conv_block(
+            16, 32, kernel_size=3, padding="same", padding_mode="replicate"
+        )
+        # self.branch3_dw_conv = conv_block(
+        #     16, 32, kernel_size=3, groups=16, padding="same", padding_mode="replicate"
         # )
-        self.branch3_dw_conv = conv_block(
-            16, 32, kernel_size=3, groups=16, padding="same", padding_mode="replicate"
-        )
-        self.branch3_pw_conv = conv_block(
-            32, 32, kernel_size=1, padding="same", padding_mode="replicate"
-        )
+        # self.branch3_pw_conv = conv_block(
+        #     32, 32, kernel_size=1, padding="same", padding_mode="replicate"
+        # )
 
         self.branch4_conv1 = conv_block(in_channels, 16, kernel_size=1)
-        # self.branch4_conv2 = conv_block(
-        #     16, 32, kernel_size=3, padding="same", padding_mode="replicate"
+        self.branch4_conv2 = conv_block(
+            16, 32, kernel_size=3, padding="same", padding_mode="replicate"
+        )
+        self.branch4_conv3 = conv_block(
+            32, 32, kernel_size=3, padding="same", padding_mode="replicate"
+        )
+        # self.branch4_dw_conv1 = conv_block(
+        #     16, 32, kernel_size=3, groups=16, padding="same", padding_mode="replicate"
         # )
-        # self.branch4_conv3 = conv_block(
-        #     32, 32, kernel_size=3, padding="same", padding_mode="replicate"
+        # self.branch4_pw_conv1 = conv_block(
+        #     32, 32, kernel_size=1, padding="same", padding_mode="replicate"
         # )
-        self.branch4_dw_conv1 = conv_block(
-            16, 32, kernel_size=3, groups=16, padding="same", padding_mode="replicate"
-        )
-        self.branch4_pw_conv1 = conv_block(
-            32, 32, kernel_size=1, padding="same", padding_mode="replicate"
-        )
-        self.branch4_dw_conv2 = conv_block(
-            32, 32, kernel_size=3, groups=32, padding="same", padding_mode="replicate"
-        )
-        self.branch4_pw_conv2 = conv_block(
-            32, 32, kernel_size=1, padding="same", padding_mode="replicate"
-        )
+        # self.branch4_dw_conv2 = conv_block(
+        #     32, 32, kernel_size=3, groups=32, padding="same", padding_mode="replicate"
+        # )
+        # self.branch4_pw_conv2 = conv_block(
+        #     32, 32, kernel_size=1, padding="same", padding_mode="replicate"
+        # )
 
     def _forward(self, x: Tensor) -> List[Tensor]:
         branch1 = self.branch1_conv(x)
@@ -71,17 +71,17 @@ class InceptionA(nn.Module):
         branch2 = self.branch2_conv(branch2)
 
         branch3 = self.branch3_conv1(x)
-        # branch3 = self.branch3_conv2(branch3)
-        branch3 = self.branch3_dw_conv(branch3)
-        branch3 = self.branch3_pw_conv(branch3)
+        branch3 = self.branch3_conv2(branch3)
+        # branch3 = self.branch3_dw_conv(branch3)
+        # branch3 = self.branch3_pw_conv(branch3)
 
         branch4 = self.branch4_conv1(x)
-        # branch4 = self.branch4_conv2(branch4)
-        # branch4 = self.branch4_conv3(branch4)
-        branch4 = self.branch4_dw_conv1(branch4)
-        branch4 = self.branch4_pw_conv1(branch4)
-        branch4 = self.branch4_dw_conv2(branch4)
-        branch4 = self.branch4_pw_conv2(branch4)
+        branch4 = self.branch4_conv2(branch4)
+        branch4 = self.branch4_conv3(branch4)
+        # branch4 = self.branch4_dw_conv1(branch4)
+        # branch4 = self.branch4_pw_conv1(branch4)
+        # branch4 = self.branch4_dw_conv2(branch4)
+        # branch4 = self.branch4_pw_conv2(branch4)
 
         # Concatenate the outputs
         # NOTE: Includes residual connection
@@ -140,7 +140,8 @@ class InceptionB(nn.Module):
     def _forward(self, x: Tensor) -> List[Tensor]:
         branch1 = self.branch1_conv(x)
 
-        branch2 = self.branch2_avg(x)
+        branch2 = F.pad(x, (1, 1, 1, 1), mode="replicate")
+        branch2 = self.branch2_avg(branch2)
         branch2 = self.branch2_conv(branch2)
 
         branch3 = self.branch3_conv1(x)
