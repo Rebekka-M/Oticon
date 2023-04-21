@@ -22,20 +22,7 @@ import wandb
 # os.environ["WANDB_API_KEY"] = api_key.key
 WANDB__SERVICE_WAIT = 300
 
-config = {
-    "architecture": "inceptiion_model",
-    "n_epochs": 20,
-    "optimizer": "Adam",
-    "loss_fn": "CrossEntropyLoss",
-    "model_parameters": 0,
-}
 
-wandb.init(
-    project="OTICON",
-    entity="metrics_logger",
-    settings=wandb.Settings(start_method="thread"),
-    config=config,
-)
 
 # %%
 
@@ -159,9 +146,6 @@ model = Model().to(device)
 # Print amount of parameters
 print(f"Parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
 
-wandb.config.update(
-    {"model_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad)}
-)
 
 model.train()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -172,6 +156,22 @@ scheduler = optim.lr_scheduler.ReduceLROnPlateau(
 loss_fn = nn.CrossEntropyLoss()
 
 acc_running = 0
+
+
+config = {
+    "architecture": "inceptiion_model",
+    "n_epochs": 20,
+    "optimizer": "Adam",
+    "loss_fn": "CrossEntropyLoss",
+    "model_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad),
+}
+
+wandb.init(
+    project="OTICON",
+    entity="metrics_logger",
+    settings=wandb.Settings(start_method="thread"),
+    config=config,
+)
 
 for epoch in (bar := trange(n_epochs)):
     # print(epoch)
@@ -233,6 +233,3 @@ print(acc_running)
 wandb.log({"spectrograms": [wandb.Image(im) for im in X_train]})
 wandb.log({"predictions": y_pred_s})
 
-if __name__ == "__main__":
-    pass
-# %%
