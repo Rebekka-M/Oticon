@@ -3,6 +3,7 @@ import torch as t
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from sklearn.metrics import f1_score
 from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,7 +14,7 @@ import sys
 sys.path.insert(0, os.getcwd())
 
 from data.loader import load_training, load_validation, n_freq, n_time, n_classes
-from inception import InceptionA, InceptionB
+from inception import FeatureConcatenation, InceptionA, InceptionB
 
 # Set up wandb
 # import api_key
@@ -65,7 +66,6 @@ n_val = len(X_val)
 
 # %%
 
-
 class Model(nn.Module):
     """
     Model incorporating intro + incpetion blocks + outro with final layer
@@ -94,12 +94,12 @@ class Model(nn.Module):
         self.maxpool1 = nn.MaxPool2d(kernel_size=3, stride=1)
 
         # inception
-        self.inceptionA = InceptionA(in_channels=16)
-        print(sum(p.numel() for p in self.inceptionA.parameters() if p.requires_grad))
-        self.inceptionB1 = InceptionB(in_channels=112)
-        print(sum(p.numel() for p in self.inceptionB1.parameters() if p.requires_grad))
-        self.inceptionB2 = InceptionB(in_channels=240)
-        print(sum(p.numel() for p in self.inceptionB2.parameters() if p.requires_grad))
+        self.inceptionA = InceptionA(in_channels=16, concat_channels=96)
+        # print(sum(p.numel() for p in self.inceptionA.parameters() if p.requires_grad))
+        self.inceptionB1 = InceptionB(in_channels=112, concat_channels=128)
+        # print(sum(p.numel() for p in self.inceptionB1.parameters() if p.requires_grad))
+        self.inceptionB2 = InceptionB(in_channels=240, concat_channels=128)
+        # print(sum(p.numel() for p in self.inceptionB2.parameters() if p.requires_grad))
 
         # after inception
 
@@ -113,6 +113,7 @@ class Model(nn.Module):
 
         self.sigmoid_class = nn.Sigmoid()
         self.fc_final = nn.Linear(32, n_classes)
+
 
     def forward(self, x):
         z = self.conv1(x)
@@ -173,6 +174,9 @@ wandb.init(
     config=config,
 )
 
+wandb.log({"lr": optimizer.param_groups[0]["lr"]})
+
+
 for epoch in (bar := trange(n_epochs)):
     # print(epoch)
 
@@ -187,6 +191,7 @@ for epoch in (bar := trange(n_epochs)):
         loss = loss_fn(y_pred, y)
 
         acc = (y_pred.argmax(dim=1) == y).sum() / y.size(0)
+        f1 = f1_score(y, y_pred.argmax(dim=1), average='macro')
         # Alpha=0.05 update of running accuracy
         acc_running += 0.05 * (acc.item() - acc_running)
         bar.set_postfix(acc=f"{acc_running:.2f}")
@@ -196,7 +201,7 @@ for epoch in (bar := trange(n_epochs)):
         optimizer.step()
 
         # log with wandb
-        wandb.log({"acc_train": acc_running, "loss_train": loss})
+        wandb.log({"acc_train": acc_running, "loss_train": loss, "f1_train": f1})
 
     scheduler.step(acc_running)
     wandb.log({"lr": optimizer.param_groups[0]["lr"]})
