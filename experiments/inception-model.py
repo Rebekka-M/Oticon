@@ -75,64 +75,42 @@ class Model(nn.Module):
         super().__init__()
         # assumes in put shape [N, 1, 32, 96]
 
-        # before inception
-        self.conv1 = nn.Conv2d(
-            in_channels=1,
-            out_channels=16,
-            kernel_size=3,
-            padding="same",
-            padding_mode="replicate",
-        )  # TO decide
-        self.conv2 = nn.Conv2d(
-            in_channels=16,
-            out_channels=16,
-            kernel_size=3,
-            padding="same",
-            padding_mode="replicate",
-        )  # To decide
-        self.pad1 = nn.ReflectionPad2d((1, 1, 1, 1))
-        self.maxpool1 = nn.MaxPool2d(kernel_size=3, stride=1)
+        self.first = nn.Sequential(
+            nn.Conv2d(
+                in_channels=1,
+                out_channels=16,
+                kernel_size=3,
+                padding="same",
+                padding_mode="replicate",
+            ),
+            nn.Conv2d(
+                in_channels=16,
+                out_channels=16,
+                kernel_size=3,
+                padding="same",
+                padding_mode="replicate",
+            ),
+            nn.ReflectionPad2d((1, 1, 1, 1)),
+            nn.MaxPool2d(kernel_size=3, stride=1),
 
-        # inception
-        self.inceptionA = InceptionA(in_channels=16, concat_channels=96)
-        # print(sum(p.numel() for p in self.inceptionA.parameters() if p.requires_grad))
-        self.inceptionB1 = InceptionB(in_channels=112, concat_channels=128)
-        # print(sum(p.numel() for p in self.inceptionB1.parameters() if p.requires_grad))
-        self.inceptionB2 = InceptionB(in_channels=240, concat_channels=128)
-        # print(sum(p.numel() for p in self.inceptionB2.parameters() if p.requires_grad))
+            InceptionA(in_channels=16, concat_channels=96),
+            InceptionB(in_channels=112, concat_channels=128),
+            InceptionB(in_channels=240, concat_channels=128),
 
-        # after inception
-
-        self.conv3 = nn.Conv2d(in_channels=368, out_channels=32, kernel_size=1)
-        self.average_pool1 = nn.AvgPool2d(kernel_size=2, stride=2)
-
-        # self.global_average_pool = nn.AdaptiveAvgPool2d(output_size=32)
-        self.average_pool2 = nn.Conv2d(
-            in_channels=32, out_channels=32, kernel_size=1, stride=1
+            nn.Conv2d(in_channels=368, out_channels=32, kernel_size=1),
+            nn.AvgPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=1, stride=1)
         )
 
-        self.sigmoid_class = nn.Sigmoid()
-        self.fc_final = nn.Linear(32, n_classes)
+        self.second = nn.Sequential(
+            nn.Sigmoid(), 
+            nn.Linear(32, n_classes))
 
 
     def forward(self, x):
-        z = self.conv1(x)
-        z = self.conv2(z)
-        z = self.pad1(z)
-        z = self.maxpool1(z)
-
-        z = self.inceptionA(z)
-        z = self.inceptionB1(z)
-        z = self.inceptionB2(z)
-
-        z = self.conv3(z)
-        z = self.average_pool1(z)
-
-        z = self.average_pool2(z)
-        z = z.mean(dim=(2, 3))
-
-        z = self.sigmoid_class(z)
-        z = self.fc_final(z)
+        z = self.first(x)
+        z = z.mean(dim=(3, 2))
+        z = self.second(z)
 
         return z
 
@@ -149,11 +127,11 @@ print(f"Parameters: {sum(p.numel() for p in model.parameters() if p.requires_gra
 
 
 model.train()
+
 optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode="max", factor=0.5, patience=0, verbose=True
 )
-# scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=learning_rate*10, steps_per_epoch=n_train//128, epochs=n_epochs, anneal_strategy="cos")
 loss_fn = nn.CrossEntropyLoss()
 
 acc_running = 0
@@ -205,8 +183,6 @@ for epoch in (bar := trange(n_epochs)):
 
     scheduler.step(acc_running)
     wandb.log({"lr": optimizer.param_groups[0]["lr"]})
-
-    # scheduler.step()
 
 
 print(acc_running)
