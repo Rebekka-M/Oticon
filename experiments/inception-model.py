@@ -18,7 +18,7 @@ import sys
 # Add current working directory to path
 sys.path.insert(0, os.getcwd())
 
-from data.loader import load_training, load_validation, n_freq, n_time, n_classes
+from data.loader import load_training, load_validation, load_testing, n_freq, n_time, n_classes
 from inception_modules import InceptionA, InceptionB, MeanModule
 
 
@@ -27,24 +27,25 @@ from inception_modules import InceptionA, InceptionB, MeanModule
 # Load data
 X_train, y_train = load_training()
 X_val, y_val = load_validation()
+X_test, y_test = load_testing()
 
 # To tensors
 X_map = lambda X: t.from_numpy(X).to(dtype=t.float)[:, None, :, :]
 y_map = lambda y: t.from_numpy(y).to(dtype=t.uint8)
-X_train, X_val = map(X_map, (X_train, X_val))
-y_train, y_val = map(y_map, (y_train, y_val))
+X_train, X_val, X_test = map(X_map, (X_train, X_val, X_test))
+y_train, y_val, y_test = map(y_map, (y_train, y_val, y_test))
 
 # Statistics
 X_train_mean = X_train.mean()
 X_train_std = X_train.std()
-n_train, n_val = len(X_train), len(X_val)
+n_train, n_val, n_test = len(X_train), len(X_val), len(X_test)
 
 # Standardize
 X_std_map = lambda X: (X - X_train_mean) / X_train_std
-X_train, X_val = map(X_std_map, (X_train, X_val))
+X_train, X_val, X_test = map(X_std_map, (X_train, X_val, X_test))
 
 # To dataset
-data_train, data_val = TensorDataset(X_train, y_train), TensorDataset(X_val, y_val)
+data_train, data_val, data_test = TensorDataset(X_train, y_train), TensorDataset(X_val, y_val), TensorDataset(X_test, y_test)
 
 # To data loader
 loader_map = lambda data: DataLoader(
@@ -52,7 +53,7 @@ loader_map = lambda data: DataLoader(
     batch_size=128,
     num_workers=4,
 )
-loader_train, loader_val = map(loader_map, (data_train, data_val))
+loader_train, loader_val, loader_test = map(loader_map, (data_train, data_val, data_test))
 
 
 
@@ -108,6 +109,10 @@ class InceptionModel(pl.LightningModule):
     def forward(self, x):
         return self.model(x)
 
+    def predict_step(self, batch, batch_idx):
+        x = batch[0]
+        return self(x)
+
 
     def training_step(self, batch, batch_idx):
         x, y_true = batch
@@ -120,8 +125,8 @@ class InceptionModel(pl.LightningModule):
         self.log("train_f1", self.f1(y_pred, y_true))
 
         return loss
-    
-    
+
+
     def validation_step(self, batch, batch_idx):
         x, y_true = batch
         y_pred = self(x)
@@ -131,6 +136,18 @@ class InceptionModel(pl.LightningModule):
         self.log("val_loss", loss)
         self.log("val_acc", self.accuracy(y_pred, y_true))
         self.log("val_f1", self.f1(y_pred, y_true))
+
+
+    def test_step(self, batch, batch_idx):
+        x, y_true = batch
+        y_pred = self(x)
+        loss = F.cross_entropy(y_pred, y_true)
+
+
+        self.log("test_loss", loss)
+        self.log("test_acc", self.accuracy(y_pred, y_true))
+        self.log("test_f1", self.f1(y_pred, y_true))
+
 
 
     def configure_optimizers(self):
@@ -148,8 +165,8 @@ class InceptionModel(pl.LightningModule):
 
 
 model = InceptionModel(
-    learning_rate=float(sys.argv[1]), #2e-3,
-    weight_decay=float(sys.argv[2]), #1e-3
+    learning_rate=2e-3,
+    weight_decay=0
 )
 
 
@@ -171,3 +188,9 @@ trainer = pl.Trainer(
 )
 
 trainer.fit(model, loader_train, loader_val)
+
+trainer.test(model, loader_test)
+
+
+y_pred = trainer.predict(model, loader_test)
+t.save(t.concat(y_pred, 0), "y_pred_test.pt") # type: ignore
