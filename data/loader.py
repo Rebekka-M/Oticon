@@ -54,3 +54,19 @@ def load_testing() -> tuple[np.ndarray, np.ndarray]:
     _, _, (X, y) = load_data()
 
     return X, y
+
+
+def load_test_final(
+    features_train_path: str = "data/training.npy",
+    labels_train_path: str = "data/training_labels.npy",
+    features_test_path: str = "data/test.npy",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    X_train, y_train, X_test = np.load(features_train_path), np.load(labels_train_path), np.load(features_test_path)
+    
+    rng = np.random.default_rng(133742069)
+    idx = rng.permutation(len(X_train))
+    
+    X_train = X_train[idx]
+    y_train = y_train[idx]
+
+    return X_train, y_train, X_test
