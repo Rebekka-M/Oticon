@@ -3,79 +3,78 @@ import torch as t
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from sklearn.metrics import f1_score
+import torchvision as tv
 from torch.utils.data import TensorDataset, DataLoader
-import numpy as np
-import matplotlib.pyplot as plt
-from tqdm import trange, tqdm
+t.set_float32_matmul_precision("medium")
+
+import torchmetrics as tm
+import lightning.pytorch as pl
+from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.callbacks import LearningRateMonitor
+
 import os
 import sys
 
+# Add current working directory to path
 sys.path.insert(0, os.getcwd())
 
 from data.loader import load_training, load_validation, n_freq, n_time, n_classes
-from inception import FeatureConcatenation, InceptionA, InceptionB
-
-# Set up wandb
-# import api_key
-import wandb
-
-# os.environ["WANDB_API_KEY"] = api_key.key
-WANDB__SERVICE_WAIT = 300
+from inception_modules import InceptionA, InceptionB, MeanModule
 
 
 
 # %%
-
-force_cpu = False
-
-if t.cuda.is_available() and not force_cpu:
-    device = t.device("cuda")
-else:
-    device = t.device("cpu")
-
-print(device)
-
-X_map = lambda X: t.from_numpy(X).to(dtype=t.float)[:, None, :, :]
-y_map = lambda y: t.from_numpy(y).to(dtype=t.uint8)
-loader_map = lambda data: DataLoader(
-    dataset=data,
-    batch_size=128,
-    shuffle=True,
-    num_workers=1,
-    pin_memory="cuda" == device,
-)
-
-
+# Load data
 X_train, y_train = load_training()
 X_val, y_val = load_validation()
 
-
+# To tensors
+X_map = lambda X: t.from_numpy(X).to(dtype=t.float)[:, None, :, :]
+y_map = lambda y: t.from_numpy(y).to(dtype=t.uint8)
 X_train, X_val = map(X_map, (X_train, X_val))
 y_train, y_val = map(y_map, (y_train, y_val))
 
+# Statistics
+X_train_mean = X_train.mean()
+X_train_std = X_train.std()
+n_train, n_val = len(X_train), len(X_val)
+class_weights = len(y_train)/y_train.unique(return_counts=True)[1]
 
-data_train = TensorDataset(X_train, y_train)
-data_val = TensorDataset(X_val, y_val)
+# Standardize
+X_std_map = lambda X: (X - X_train_mean) / X_train_std
+X_train, X_val = map(X_std_map, (X_train, X_val))
 
+# To dataset
+data_train, data_val = TensorDataset(X_train, y_train), TensorDataset(X_val, y_val)
+
+# To data loader
+loader_map = lambda data: DataLoader(
+    dataset=data,
+    batch_size=128,
+    num_workers=4,
+)
 loader_train, loader_val = map(loader_map, (data_train, data_val))
 
 
-n_train = len(X_train)
-n_val = len(X_val)
 
 # %%
-
-class Model(nn.Module):
-    """
-    Model incorporating intro + incpetion blocks + outro with final layer
-    """
-
-    def __init__(self) -> None:
+class InceptionModel(pl.LightningModule):
+    def __init__(self, learning_rate, weight_decay):
         super().__init__()
-        # assumes in put shape [N, 1, 32, 96]
+        self.save_hyperparameters()
 
-        self.first = nn.Sequential(
+        # Store hyperparameters
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
+        self.class_weights = class_weights
+
+
+        self.accuracy = tm.Accuracy(task="multiclass", num_classes=n_classes)
+        self.f1 = tm.F1Score(task="multiclass", num_classes=n_classes, average="macro")
+
+
+        self.model = nn.Sequential(
+            # Input shape [N, 1, 32, 96]
             nn.Conv2d(
                 in_channels=1,
                 out_channels=16,
@@ -99,118 +98,83 @@ class Model(nn.Module):
 
             nn.Conv2d(in_channels=368, out_channels=32, kernel_size=1),
             nn.AvgPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=1, stride=1)
-        )
+            # Global average pool
+            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=1, stride=1),
+            MeanModule(dim=(3, 2)),
 
-        self.second = nn.Sequential(
-            nn.Sigmoid(), 
-            nn.Linear(32, n_classes))
+            nn.Sigmoid(),
+            nn.Linear(32, n_classes)
+        )
 
 
     def forward(self, x):
-        z = self.first(x)
-        z = z.mean(dim=(3, 2))
-        z = self.second(z)
-
-        return z
+        return self.model(x)
 
 
-learning_rate = 2e-3
-weight_decay = 1e-3
-n_epochs = 20
+    def training_step(self, batch, batch_idx):
+        self.class_weights = class_weights.to(self.device)
+
+        x, y_true = batch
+        y_pred = self(x)
+        loss = F.cross_entropy(y_pred, y_true, self.class_weights)
 
 
-model = Model().to(device)
+        self.log("train_loss", loss)
+        self.log("train_acc", self.accuracy(y_pred, y_true))
+        self.log("train_f1", self.f1(y_pred, y_true))
 
-# Print amount of parameters
-print(f"Parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+        return loss
+    
+    
+    def validation_step(self, batch, batch_idx):
+        self.class_weights = class_weights.to(self.device)
+
+        x, y_true = batch
+        y_pred = self(x)
+        loss = F.cross_entropy(y_pred, y_true, self.class_weights)
 
 
-model.train()
+        self.log("val_loss", loss)
+        self.log("val_acc", self.accuracy(y_pred, y_true))
+        self.log("val_f1", self.f1(y_pred, y_true))
 
-optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer, mode="max", factor=0.5, patience=0, verbose=True
+
+    def configure_optimizers(self):
+        optimizer = optim.Adam(self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="max", factor=0.5, patience=1
+        )
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": scheduler,
+            "monitor": "train_f1"
+        }
+
+
+
+model = InceptionModel(
+    learning_rate=2e-3,
+    weight_decay=1e-3
 )
-loss_fn = nn.CrossEntropyLoss()
-
-acc_running = 0
 
 
-config = {
-    "architecture": "inceptiion_model",
-    "n_epochs": 20,
-    "optimizer": "Adam",
-    "loss_fn": "CrossEntropyLoss",
-    "model_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad),
-}
-
-wandb.init(
-    project="OTICON",
-    entity="metrics_logger",
-    settings=wandb.Settings(start_method="thread"),
-    config=config,
+WANDB__SERVICE_WAIT = 300
+wandb_logger = WandbLogger(
+    project="OTICON", 
+    entity="metrics_logger", 
+    name="inception-model"
 )
 
-wandb.log({"lr": optimizer.param_groups[0]["lr"]})
+trainer = pl.Trainer(
+    accelerator="auto",
+    max_epochs=80,
+    min_epochs=20,
+    logger=wandb_logger,
+    precision="16-mixed", #or "32-true"
+    callbacks=[
+        LearningRateMonitor(logging_interval="epoch")
+    ],
+)
 
-
-for epoch in (bar := trange(n_epochs)):
-    # print(epoch)
-
-    for x, y in tqdm(loader_train, leave=False):
-        x = x.to(device)
-        y = y.to(device)
-
-        y_pred = model(x)
-        # print(y_pred.shape)
-        # print(y.shape)
-
-        loss = loss_fn(y_pred, y)
-
-        acc = (y_pred.argmax(dim=1) == y).sum() / y.size(0)
-        f1 = f1_score(y, y_pred.argmax(dim=1), average='macro')
-        # Alpha=0.05 update of running accuracy
-        acc_running += 0.05 * (acc.item() - acc_running)
-        bar.set_postfix(acc=f"{acc_running:.2f}")
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        # log with wandb
-        wandb.log({"acc_train": acc_running, "loss_train": loss, "f1_train": f1})
-
-    scheduler.step(acc_running)
-    wandb.log({"lr": optimizer.param_groups[0]["lr"]})
-
-
-print(acc_running)
-
-
-model.eval()
-
-acc_running = 0
-y_pred_s = []
-
-for i, (x, y) in (bar := tqdm(enumerate(loader_val, 1), leave=False)):
-    x = x.to(device)
-    y = y.to(device)
-
-    y_pred = model(x)
-    acc = (y_pred.argmax(dim=1) == y).sum() / y.size(0)
-
-    # Mean of accuracy
-    acc_running += 1 / i * (acc.item() - acc_running)
-    bar.set_postfix(acc=f"{acc_running:.2f}")
-    y_pred_s.append(y_pred.argmax(dim=1).detach().cpu().numpy())
-
-# log with wandb
-wandb.log({"acc_val": acc_running})
-
-print(acc_running)
-
-# log data, labels, and predictions
-wandb.log({"spectrograms": [wandb.Image(im) for im in X_train]})
-wandb.log({"predictions": y_pred_s})
-
+trainer.fit(model, loader_train, loader_val)
