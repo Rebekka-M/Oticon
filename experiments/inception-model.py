@@ -38,7 +38,6 @@ y_train, y_val = map(y_map, (y_train, y_val))
 X_train_mean = X_train.mean()
 X_train_std = X_train.std()
 n_train, n_val = len(X_train), len(X_val)
-class_weights = len(y_train)/y_train.unique(return_counts=True)[1]
 
 # Standardize
 X_std_map = lambda X: (X - X_train_mean) / X_train_std
@@ -66,7 +65,6 @@ class InceptionModel(pl.LightningModule):
         # Store hyperparameters
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
-        self.class_weights = class_weights
 
 
         self.accuracy = tm.Accuracy(task="multiclass", num_classes=n_classes)
@@ -112,11 +110,9 @@ class InceptionModel(pl.LightningModule):
 
 
     def training_step(self, batch, batch_idx):
-        self.class_weights = class_weights.to(self.device)
-
         x, y_true = batch
         y_pred = self(x)
-        loss = F.cross_entropy(y_pred, y_true, self.class_weights)
+        loss = F.cross_entropy(y_pred, y_true)
 
 
         self.log("train_loss", loss)
@@ -127,11 +123,9 @@ class InceptionModel(pl.LightningModule):
     
     
     def validation_step(self, batch, batch_idx):
-        self.class_weights = class_weights.to(self.device)
-
         x, y_true = batch
         y_pred = self(x)
-        loss = F.cross_entropy(y_pred, y_true, self.class_weights)
+        loss = F.cross_entropy(y_pred, y_true)
 
 
         self.log("val_loss", loss)
