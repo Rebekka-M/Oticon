@@ -148,8 +148,8 @@ class InceptionModel(pl.LightningModule):
 
 
 model = InceptionModel(
-    learning_rate=2e-3,
-    weight_decay=1e-3
+    learning_rate=float(sys.argv[1]), #2e-3,
+    weight_decay=float(sys.argv[2]), #1e-3
 )
 
 
