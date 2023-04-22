@@ -136,7 +136,7 @@ class InceptionModel(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="max", factor=0.5, patience=2
+            optimizer, mode="max", factor=0.5, patience=1
         )
 
         return {
@@ -148,7 +148,7 @@ class InceptionModel(pl.LightningModule):
 
 
 model = InceptionModel(
-    learning_rate=5e-3,
+    learning_rate=2e-3,
     weight_decay=1e-3
 )
 
@@ -161,7 +161,7 @@ wandb_logger = WandbLogger(
 
 trainer = pl.Trainer(
     accelerator="auto",
-    max_epochs=80,
+    max_epochs=40,
     min_epochs=20,
     logger=wandb_logger,
     precision="16-mixed", #or "32-true"
