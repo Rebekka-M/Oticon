@@ -153,7 +153,7 @@ wandb_logger = WandbLogger(
 
 trainer = pl.Trainer(
     accelerator="auto",
-    max_epochs=80,
+    max_epochs=40,
     min_epochs=1,
     logger=wandb_logger,
     precision="16-mixed", #or "32-true"
