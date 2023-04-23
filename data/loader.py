@@ -19,7 +19,12 @@ def load_data(
     X, y = np.load(features_path), np.load(labels_path)
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, shuffle=True, random_state=133742069, stratify=y if stratified else None
+        X,
+        y,
+        test_size=0.2,
+        shuffle=True,
+        random_state=133742069,
+        stratify=y if stratified else None,
     )
 
     X_train, X_val, y_train, y_val = train_test_split(
@@ -54,3 +59,14 @@ def load_testing() -> tuple[np.ndarray, np.ndarray]:
     _, _, (X, y) = load_data()
 
     return X, y
+
+
+def load_testing_no_labels(feature_path: str = "data/test.npy") -> np.ndarray:
+    print(
+        "WARNING: If you are training/experimenting, use the training and validation set instead.\n"
+        "Use this function only to get the final label predictions of the unknown labels."
+    )
+
+    X = np.load(feature_path)
+
+    return X
